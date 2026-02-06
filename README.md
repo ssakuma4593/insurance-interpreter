@@ -70,6 +70,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 Optional environment variables:
+- `MOCK_OPENAI`: Set to `'true'` to use mock embeddings and summaries (saves API costs). Q&A will still use real OpenAI API for dynamic questions.
 - `DATABASE_PATH`: Path to SQLite database (default: `./data/insurance.db`)
 - `UPLOAD_DIR`: Directory for uploaded PDFs (default: `./uploads`)
 - `MAX_FILE_SIZE`: Max file size in bytes (default: 10485760 = 10MB)
