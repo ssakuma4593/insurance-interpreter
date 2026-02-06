@@ -37,6 +37,9 @@ yarn-error.log*
 /uploads
 /data
 
+# test data (keep PDFs local, don't commit)
+/test-data/*.pdf
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
