@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ExplanationLevel } from '@/lib/models';
 
 type Tab = 'summary' | 'chat';
@@ -242,10 +244,39 @@ export default function PlanPage() {
                   {summaryLoading ? (
                     <div className="text-center py-8">Loading summary...</div>
                   ) : summary ? (
-                    <div className="prose max-w-none">
+                    <div className="prose prose-blue max-w-none">
                       {summary.fullText ? (
-                        <div className="whitespace-pre-wrap text-gray-700">
-                          {summary.fullText}
+                        <div className="markdown-content">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h1: ({node, ...props}) => <h1 className="text-3xl font-bold text-gray-900 mt-6 mb-4" {...props} />,
+                              h2: ({node, ...props}) => <h2 className="text-2xl font-bold text-gray-900 mt-5 mb-3" {...props} />,
+                              h3: ({node, ...props}) => <h3 className="text-xl font-semibold text-gray-900 mt-4 mb-2" {...props} />,
+                              h4: ({node, ...props}) => <h4 className="text-lg font-semibold text-gray-800 mt-3 mb-2" {...props} />,
+                              p: ({node, ...props}) => <p className="text-gray-700 mb-3 leading-relaxed" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc list-inside mb-3 space-y-1 text-gray-700" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-700" {...props} />,
+                              li: ({node, ...props}) => <li className="ml-4" {...props} />,
+                              strong: ({node, ...props}) => <strong className="font-semibold text-gray-900" {...props} />,
+                              em: ({node, ...props}) => <em className="italic" {...props} />,
+                              code: ({node, inline, ...props}: any) => 
+                                inline ? (
+                                  <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800" {...props} />
+                                ) : (
+                                  <code className="block bg-gray-100 p-3 rounded text-sm font-mono text-gray-800 overflow-x-auto mb-3" {...props} />
+                                ),
+                              blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-blue-500 pl-4 italic text-gray-600 my-3" {...props} />,
+                              table: ({node, ...props}) => <table className="min-w-full border-collapse border border-gray-300 mb-3" {...props} />,
+                              thead: ({node, ...props}) => <thead className="bg-gray-100" {...props} />,
+                              tbody: ({node, ...props}) => <tbody {...props} />,
+                              tr: ({node, ...props}) => <tr className="border-b border-gray-200" {...props} />,
+                              th: ({node, ...props}) => <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-900" {...props} />,
+                              td: ({node, ...props}) => <td className="border border-gray-300 px-4 py-2 text-gray-700" {...props} />,
+                            }}
+                          >
+                            {summary.fullText}
+                          </ReactMarkdown>
                         </div>
                       ) : (
                         <div className="space-y-4">
