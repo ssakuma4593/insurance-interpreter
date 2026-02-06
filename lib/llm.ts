@@ -1,9 +1,13 @@
 import OpenAI from 'openai';
 import { ExplanationLevel, Citation } from './models';
+import fs from 'fs';
+import path from 'path';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const USE_MOCK_SUMMARY = process.env.MOCK_OPENAI === 'true';
 
 export interface RetrievalResult {
   text: string;
@@ -30,6 +34,52 @@ export async function generatePlanSummary(
   documentText: string,
   level: ExplanationLevel
 ): Promise<PlanSummary> {
+  // Use mock summary if MOCK_OPENAI is enabled
+  if (USE_MOCK_SUMMARY) {
+    console.log(`[MOCK] Generating mock plan summary for level: ${level}`);
+    
+    try {
+      const mockResponsesPath = path.join(process.cwd(), 'test-data', 'mock-responses.json');
+      const mockData = JSON.parse(fs.readFileSync(mockResponsesPath, 'utf-8'));
+      const summaryText = mockData.summary[level] || mockData.summary.beginner;
+      
+      const summary: PlanSummary = {
+        unknownFields: [],
+      };
+      
+      // Parse the mock summary for key fields (same logic as real version)
+      const patterns = {
+        deductible: /deductible[:\s]+([^\n]+)/i,
+        outOfPocketMax: /out[-\s]of[-\s]pocket[-\s]max[imum]*[:\s]+([^\n]+)/i,
+        primaryCareCopay: /primary[-\s]care[-\s]copay[:\s]+([^\n]+)/i,
+        specialistCopay: /specialist[-\s]copay[:\s]+([^\n]+)/i,
+        emergencyRoomCopay: /emergency[-\s]room[-\s]copay[:\s]+([^\n]+)/i,
+        urgentCareCopay: /urgent[-\s]care[-\s]copay[:\s]+([^\n]+)/i,
+        preventiveCare: /preventive[-\s]care[:\s]+([^\n]+)/i,
+        referralRequired: /referral[-\s]required[:\s]+([^\n]+)/i,
+        priorAuthorization: /prior[-\s]authorization[:\s]+([^\n]+)/i,
+        networkNotes: /network[:\s]+([^\n]+)/i,
+        drugTierOverview: /drug[-\s]tier[:\s]+([^\n]+)/i,
+      };
+
+      for (const [key, pattern] of Object.entries(patterns)) {
+        const match = summaryText.match(pattern);
+        if (match) {
+          (summary as any)[key] = match[1].trim();
+        } else {
+          summary.unknownFields.push(key);
+        }
+      }
+
+      (summary as any).fullText = summaryText;
+      return summary;
+    } catch (error) {
+      console.error('[MOCK] Failed to load mock summary, falling back to real API:', error);
+      // Fall through to real API call
+    }
+  }
+
+  // Real API call
   const levelInstructions = {
     beginner: `Explain everything in plain language. Define all insurance terms (copay, deductible, coinsurance, out-of-pocket maximum) with simple examples. Use everyday language and avoid jargon.`,
     intermediate: `Provide clear explanations with brief definitions of key terms. Be direct and informative.`,
