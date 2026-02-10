@@ -180,22 +180,46 @@ export async function answerQuestion(
     .join('\n\n');
   
   // Debug logging
-  console.log(`[LLM] Answering question: "${question}"`);
+  console.log(`\n[LLM] ========================================`);
+  console.log(`[LLM] Question: "${question}"`);
   console.log(`[LLM] Context length: ${context.length} characters`);
   console.log(`[LLM] Number of sources: ${retrievalResults.length}`);
+  
+  // Check if context contains preventive care keywords
+  const lowerContext = context.toLowerCase();
+  const preventiveKeywords = ['preventive', 'preventative', 'prevention', 'wellness', 'routine', 'screening', 'annual', 'checkup'];
+  const foundKeywords = preventiveKeywords.filter(kw => lowerContext.includes(kw));
+  if (foundKeywords.length > 0) {
+    console.log(`[LLM] ✓ Found preventive care keywords: ${foundKeywords.join(', ')}`);
+  }
+  console.log(`[LLM] ========================================\n`);
 
   const systemPrompt = `You are an expert insurance plan interpreter helping users understand their insurance documents.
 
 ${levelInstructions[level]}
 
 CRITICAL RULES:
-1. Answer based on the provided document excerpts. Look carefully for related information even if it uses slightly different wording.
-2. If the question asks about "preventive visits" or "preventative care", look for terms like: preventive care, preventative care, preventive services, wellness visits, annual checkups, routine care, screening services, etc.
-3. If the question asks about "primary care", look for: primary care, general practitioner, family doctor, PCP, primary care physician, etc.
-4. Extract and synthesize information from the excerpts. If you find related information, provide it even if it's not an exact match to the question wording.
-5. Only say "I can't find that information" if you've thoroughly searched all provided excerpts and truly cannot find any related information.
-6. Always cite your sources by referencing the page number and including a brief snippet.
-7. Never provide medical diagnosis or treatment recommendations. This is insurance navigation only.
+1. **ALWAYS extract and synthesize information from the provided excerpts.** Look carefully for related information even if it uses slightly different wording than the question.
+
+2. **Terminology Matching - Be Flexible:**
+   - "Preventive visits" / "preventative care" / "preventive care" → Look for: preventive care, preventative care, preventive services, wellness visits, annual checkups, routine care, screening services, preventive benefits, covered preventive services, etc.
+   - "Primary care" → Look for: primary care, general practitioner, family doctor, PCP, primary care physician, general care, etc.
+   - "How often" / "frequency" → Look for: annual, yearly, per year, once per, unlimited, no limit, covered, etc.
+
+3. **Information Synthesis:**
+   - If excerpts mention preventive care is "covered" or "included", that answers "are preventive visits covered?"
+   - If excerpts mention "annual" or "yearly" preventive visits, that answers "how often?"
+   - Extract ANY relevant information, even if it's not a perfect match to the question wording.
+   - Combine information from multiple excerpts if needed.
+
+4. **Only say "I can't find" if:**
+   - You've thoroughly searched ALL provided excerpts
+   - You cannot find ANY related information, synonyms, or related terms
+   - The excerpts truly contain nothing relevant to the question
+
+5. **Always cite your sources** by referencing the page number and including a brief snippet.
+
+6. **Never provide medical diagnosis or treatment recommendations.** This is insurance navigation only.
 
 Format citations as: [Page X: "relevant snippet"]`;
 
@@ -204,14 +228,25 @@ Format citations as: [Page X: "relevant snippet"]`;
     ...conversationHistory.slice(-6), // Last 3 exchanges
     {
       role: 'user',
-      content: `Based on the following excerpts from the insurance plan document, answer this question: "${question}"\n\nDocument excerpts:\n${context}`,
+      content: `Question: "${question}"
+
+I've retrieved ${retrievalResults.length} excerpts from the insurance plan document. These excerpts were specifically retrieved because they likely contain information relevant to your question.
+
+IMPORTANT: Even if the wording doesn't match exactly, extract and synthesize ANY relevant information. For example:
+- If the question asks "are preventive visits covered?" and an excerpt says "preventive care is covered at 100%", that IS the answer.
+- If the question asks "how often?" and an excerpt mentions "annual preventive visits" or "yearly checkups", extract that frequency information.
+
+Document excerpts:
+${context}
+
+Your task: Review ALL excerpts above and provide a comprehensive answer based on what you find. Extract information even if it uses synonyms or related terms. Only say "can't find" if you've thoroughly reviewed all excerpts and found absolutely nothing related.`,
     },
   ];
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: messages as any,
-    temperature: 0.3,
+    temperature: 0.5, // Increased from 0.3 to allow more flexible interpretation
   });
 
   const answer = response.choices[0].message.content || '';
