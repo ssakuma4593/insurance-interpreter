@@ -338,7 +338,31 @@ export default function PlanPage() {
                               : 'bg-gray-100 text-gray-900'
                           }`}
                         >
-                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                          {msg.role === 'assistant' ? (
+                            <div className="prose prose-sm max-w-none">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  p: ({node, ...props}) => <p className="mb-2 last:mb-0 text-gray-900" {...props} />,
+                                  strong: ({node, ...props}) => <strong className="font-semibold text-gray-900" {...props} />,
+                                  em: ({node, ...props}) => <em className="italic" {...props} />,
+                                  ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                                  ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                                  li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                                  code: ({node, inline, ...props}: any) => 
+                                    inline ? (
+                                      <code className="bg-gray-200 px-1 py-0.5 rounded text-sm font-mono" {...props} />
+                                    ) : (
+                                      <code className="block bg-gray-200 p-2 rounded text-sm font-mono overflow-x-auto mb-2" {...props} />
+                                    ),
+                                }}
+                              >
+                                {msg.content}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          )}
                           {msg.citations && msg.citations.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-gray-300">
                               <p className="text-xs font-semibold mb-2">Sources:</p>
