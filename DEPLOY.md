@@ -91,28 +91,51 @@ Render also supports persistent storage and is good for Next.js apps.
 
 ---
 
-## Option 3: Vercel (Quick but Limited)
+## Option 3: Vercel (GitHub Integration - Recommended for GitHub Users)
 
-⚠️ **Note**: Vercel is serverless and doesn't support persistent file storage well. Your SQLite database and uploads will be lost on each deployment. Only use for quick demos.
+Vercel integrates seamlessly with GitHub and is free for Next.js apps. However, there are limitations:
+
+⚠️ **Limitations:**
+- Serverless functions have execution time limits (10s on free tier, 60s on Pro)
+- No persistent file storage (SQLite database and uploads reset on each deployment)
+- For production, you'd need to use external storage (S3, Supabase, etc.)
+
+**For testing/demos, Vercel works great!**
 
 ### Steps:
 
-1. **Install Vercel CLI**
-   ```bash
-   npm i -g vercel
-   ```
+1. **Connect to Vercel**
+   - Go to https://vercel.com
+   - Sign up with GitHub
+   - Click "Add New Project"
+   - Import your `insurance-interpreter` repository
 
-2. **Deploy**
-   ```bash
-   vercel
-   ```
-   - Follow the prompts
-   - Add `OPENAI_API_KEY` when asked
+2. **Configure Project**
+   - Framework Preset: Next.js (auto-detected)
+   - Root Directory: `./` (default)
+   - Build Command: `npm run build` (default)
+   - Output Directory: `.next` (default)
 
-3. **For Production**
-   ```bash
-   vercel --prod
-   ```
+3. **Set Environment Variables**
+   - Add: `OPENAI_API_KEY` = `your_openai_api_key_here`
+   - Add: `NEXT_PUBLIC_BASE_PATH` = `/insurance-interpreter`
+
+4. **Configure Custom Domain**
+   - Go to Project Settings → Domains
+   - Add: `satoesakuma.com`
+   - Configure subpath: `/insurance-interpreter`
+   - Vercel will provide DNS instructions
+
+5. **Deploy**
+   - Click "Deploy"
+   - Vercel will build and deploy automatically
+   - Every push to main branch auto-deploys!
+
+### Vercel Free Tier:
+- Unlimited deployments
+- 100GB bandwidth/month
+- Perfect for testing and demos
+- Auto-deploys on git push
 
 ---
 

@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "NEXT_PUBLIC_BASE_PATH": "/insurance-interpreter"
+  },
+  "rewrites": [
+    {
+      "source": "/insurance-interpreter/:path*",
+      "destination": "/:path*"
+    }
+  ]
+}
