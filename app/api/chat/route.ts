@@ -31,15 +31,42 @@ export async function POST(request: NextRequest) {
     // Get query embedding
     const queryEmbedding = await getEmbedding(question);
 
-    // Retrieve similar chunks
-    const similarChunks = chunkModel.searchSimilar(docId, queryEmbedding, 5);
+    // Use hybrid search: combines semantic (embedding) + keyword search
+    // Increased topK to 15 and adjusted semantic weight to 0.5 (equal weight with keywords)
+    let similarChunks = chunkModel.searchHybrid(docId, queryEmbedding, question, 15, 0.5);
+    
+    // Fallback: If we got very few results or they seem irrelevant, try pure keyword search
+    if (similarChunks.length < 5) {
+      console.log('[Chat] Hybrid search returned few results, trying keyword-only search');
+      const keywordChunks = chunkModel.searchByKeywords(docId, question, 15);
+      // Merge and deduplicate by chunk ID
+      const chunkMap = new Map();
+      similarChunks.forEach(chunk => chunkMap.set(chunk.id, chunk));
+      keywordChunks.forEach(chunk => chunkMap.set(chunk.id, chunk));
+      similarChunks = Array.from(chunkMap.values()).slice(0, 15);
+    }
 
-    // Format retrieval results
+    // Format retrieval results - send full chunk text, not just snippets
     const retrievalResults = similarChunks.map(chunk => ({
-      text: chunk.text,
+      text: chunk.text, // Full chunk text for better context
       pageNumber: chunk.pageNumber,
-      snippet: chunk.text.substring(0, 300), // First 300 chars as snippet
+      snippet: chunk.text.substring(0, 800), // Longer snippet for display
     }));
+    
+    // Debug logging
+    console.log(`\n[Chat API] ========================================`);
+    console.log(`[Chat API] Question: "${question}"`);
+    console.log(`[Chat API] Retrieved ${retrievalResults.length} chunks`);
+    retrievalResults.forEach((result, idx) => {
+      const preview = result.text.substring(0, 200).replace(/\n/g, ' ');
+      console.log(`[Chat API] Chunk ${idx + 1} (Page ${result.pageNumber}): "${preview}..."`);
+      // Check if chunk contains preventive/preventative keywords
+      const lowerText = result.text.toLowerCase();
+      if (lowerText.includes('prevent') || lowerText.includes('primary') || lowerText.includes('care')) {
+        console.log(`[Chat API]   ✓ Contains preventive/primary care keywords!`);
+      }
+    });
+    console.log(`[Chat API] ========================================\n`);
 
     // Format conversation history
     const history = conversationHistory.map((msg: ConversationMessage) => ({
