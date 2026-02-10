@@ -132,6 +132,154 @@ export const chunkModel = {
     similarities.sort((a, b) => b.similarity - a.similarity);
     return similarities.slice(0, topK).map(item => item.chunk);
   },
+
+  searchByKeywords: (docId: string, query: string, topK: number = 5): Chunk[] => {
+    const chunks = chunkModel.getByDocId(docId);
+    
+    // Normalize query with synonym expansion
+    const queryWords = normalizeQuery(query);
+    if (queryWords.length === 0) return [];
+    
+    // Calculate keyword scores for each chunk
+    const scoredChunks = chunks.map(chunk => {
+      const chunkText = chunk.text.toLowerCase();
+      let score = 0;
+      
+      // Score each word (including synonyms)
+      for (const word of queryWords) {
+        // Exact word match (with word boundaries) - highest weight
+        const exactMatches = (chunkText.match(new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi')) || []).length;
+        score += exactMatches * 3; // Increased weight
+        
+        // Partial matches (substring) - lower weight
+        const partialMatches = (chunkText.match(new RegExp(escapeRegex(word), 'gi')) || []).length;
+        score += (partialMatches - exactMatches) * 1;
+      }
+      
+      // Phrase matching - check for original query phrases
+      const originalWords = query.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+      for (let i = 0; i < originalWords.length - 1; i++) {
+        const phrase = `${originalWords[i]} ${originalWords[i + 1]}`;
+        if (chunkText.includes(phrase)) {
+          score += 5; // Phrase match bonus
+        }
+      }
+      
+      // Full query phrase match (highest bonus)
+      const fullQueryPhrase = originalWords.join(' ');
+      if (fullQueryPhrase.length > 5 && chunkText.includes(fullQueryPhrase)) {
+        score += 10;
+      }
+      
+      return { chunk, score };
+    });
+    
+    // Sort by score and return top K
+    scoredChunks.sort((a, b) => b.score - a.score);
+    return scoredChunks.slice(0, topK).map(item => item.chunk);
+  },
+
+  searchHybrid: (
+    docId: string,
+    queryEmbedding: number[],
+    query: string,
+    topK: number = 10,
+    semanticWeight: number = 0.5
+  ): Chunk[] => {
+    const chunks = chunkModel.getByDocId(docId);
+    if (chunks.length === 0) return [];
+    
+    const keywordWeight = 1 - semanticWeight;
+    
+    // Get semantic scores
+    const semanticScores = chunks.map(chunk => ({
+      chunk,
+      score: cosineSimilarity(queryEmbedding, chunk.embedding),
+    }));
+    
+    // Normalize semantic scores to [0, 1]
+    const maxSemantic = Math.max(...semanticScores.map(s => s.score), 0.001);
+    const normalizedSemantic = semanticScores.map(s => ({
+      chunk: s.chunk,
+      semanticScore: s.score / maxSemantic,
+    }));
+    
+    // Get keyword scores with expanded query
+    const queryWords = normalizeQuery(query);
+    const keywordScores = chunks.map(chunk => {
+      if (queryWords.length === 0) return { chunk, keywordScore: 0 };
+      
+      const chunkText = chunk.text.toLowerCase();
+      let score = 0;
+      
+      // Score each word (including synonyms)
+      for (const word of queryWords) {
+        // Exact word match (with word boundaries) - highest weight
+        const exactMatches = (chunkText.match(new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi')) || []).length;
+        score += exactMatches * 3; // Increased weight
+        
+        // Partial matches (substring) - lower weight
+        const partialMatches = (chunkText.match(new RegExp(escapeRegex(word), 'gi')) || []).length;
+        score += (partialMatches - exactMatches) * 1;
+      }
+      
+      // Phrase matching - check for original query phrases
+      const originalWords = query.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+      for (let i = 0; i < originalWords.length - 1; i++) {
+        const phrase = `${originalWords[i]} ${originalWords[i + 1]}`;
+        if (chunkText.includes(phrase)) {
+          score += 5; // Phrase match bonus
+        }
+      }
+      
+      // Full query phrase match (highest bonus)
+      const fullQueryPhrase = originalWords.join(' ');
+      if (fullQueryPhrase.length > 5 && chunkText.includes(fullQueryPhrase)) {
+        score += 10;
+      }
+      
+      return { chunk, keywordScore: score };
+    });
+    
+    // Normalize keyword scores to [0, 1]
+    const maxKeyword = Math.max(...keywordScores.map(s => s.keywordScore), 0.001);
+    const normalizedKeyword = keywordScores.map(s => ({
+      chunk: s.chunk,
+      keywordScore: s.keywordScore / maxKeyword,
+    }));
+    
+    // Combine scores - but boost keyword-heavy results
+    const combined = normalizedSemantic.map(sem => {
+      const keyword = normalizedKeyword.find(k => k.chunk.id === sem.chunk.id);
+      const keywordScore = keyword?.keywordScore || 0;
+      
+      // If keyword score is high, give it more weight
+      const adjustedKeywordWeight = keywordScore > 0.5 ? keywordWeight * 1.5 : keywordWeight;
+      const adjustedSemanticWeight = keywordScore > 0.5 ? semanticWeight * 0.7 : semanticWeight;
+      const totalWeight = adjustedKeywordWeight + adjustedSemanticWeight;
+      
+      const finalScore = 
+        (adjustedSemanticWeight * sem.semanticScore + adjustedKeywordWeight * keywordScore) / totalWeight;
+      
+      return { chunk: sem.chunk, score: finalScore, keywordScore, semanticScore: sem.semanticScore };
+    });
+    
+    // Sort by combined score and return top K
+    combined.sort((a, b) => b.score - a.score);
+    
+    // Debug logging
+    console.log(`[Hybrid Search] Query: "${query}"`);
+    console.log(`[Hybrid Search] Expanded words: ${queryWords.join(', ')}`);
+    console.log(`[Hybrid Search] Total chunks searched: ${chunks.length}`);
+    console.log(`[Hybrid Search] Top 5 results:`);
+    combined.slice(0, 5).forEach((result, idx) => {
+      const snippet = result.chunk.text.substring(0, 150).replace(/\n/g, ' ');
+      console.log(`  ${idx + 1}. Score: ${result.score.toFixed(3)} (sem: ${result.semanticScore.toFixed(3)}, kw: ${result.keywordScore.toFixed(3)})`);
+      console.log(`     Page ${result.chunk.pageNumber}: "${snippet}..."`);
+    });
+    
+    return combined.slice(0, topK).map(item => item.chunk);
+  },
 };
 
 // Conversation operations
@@ -185,4 +333,58 @@ function cosineSimilarity(a: number[], b: number[]): number {
   
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Helper function to normalize query for keyword search
+function normalizeQuery(query: string): string[] {
+  // Common stop words to filter out
+  const stopWords = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
+    'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
+    'to', 'was', 'will', 'with', 'i', 'my', 'me', 'do', 'does', 'what',
+    'how', 'when', 'where', 'why', 'can', 'could', 'should', 'would'
+  ]);
+  
+  const words = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Replace punctuation with spaces
+    .split(/\s+/) // Split on whitespace
+    .filter(word => word.length > 2 && !stopWords.has(word)); // Filter short words and stop words
+  
+  // Expand with synonyms and variations
+  const expanded: string[] = [];
+  for (const word of words) {
+    expanded.push(word);
+    
+    // Add synonyms and variations
+    const synonyms = getSynonyms(word);
+    expanded.push(...synonyms);
+  }
+  
+  // Remove duplicates
+  return Array.from(new Set(expanded));
+}
+
+// Helper function to get synonyms and variations for common insurance terms
+function getSynonyms(word: string): string[] {
+  const synonymMap: Record<string, string[]> = {
+    'preventive': ['preventative', 'prevention', 'prevent'],
+    'preventative': ['preventive', 'prevention', 'prevent'],
+    'visit': ['visits', 'appointment', 'appointments', 'care', 'service', 'services'],
+    'visits': ['visit', 'appointment', 'appointments', 'care', 'service', 'services'],
+    'primary': ['primary', 'general', 'family'],
+    'care': ['service', 'services', 'visit', 'visits', 'treatment'],
+    'covered': ['cover', 'coverage', 'includes', 'include', 'provided'],
+    'coverage': ['cover', 'covered', 'includes', 'include'],
+    'copay': ['copayment', 'co-pay', 'co-payment'],
+    'deductible': ['deductibles'],
+    'specialist': ['specialists', 'specialty'],
+  };
+  
+  return synonymMap[word] || [];
+}
+
+// Helper function to escape special regex characters
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

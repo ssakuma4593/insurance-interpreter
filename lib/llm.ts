@@ -174,21 +174,28 @@ export async function answerQuestion(
     };
   }
 
-  // Build context from retrieval results
+  // Build context from retrieval results - use full text, not just snippets
   const context = retrievalResults
-    .map((result, idx) => `[Source ${idx + 1}, Page ${result.pageNumber}]:\n${result.snippet}`)
+    .map((result, idx) => `[Source ${idx + 1}, Page ${result.pageNumber}]:\n${result.text}`)
     .join('\n\n');
+  
+  // Debug logging
+  console.log(`[LLM] Answering question: "${question}"`);
+  console.log(`[LLM] Context length: ${context.length} characters`);
+  console.log(`[LLM] Number of sources: ${retrievalResults.length}`);
 
   const systemPrompt = `You are an expert insurance plan interpreter helping users understand their insurance documents.
 
 ${levelInstructions[level]}
 
 CRITICAL RULES:
-1. ONLY answer based on the provided document excerpts. Never invent or assume information.
-2. If the document doesn't contain the needed information, explicitly say "I can't find that information in your document" and suggest what the user might look for.
-3. Always cite your sources by referencing the page number and including a brief snippet.
-4. Never provide medical diagnosis or treatment recommendations. This is insurance navigation only.
-5. If you're uncertain about the answer, indicate your confidence level.
+1. Answer based on the provided document excerpts. Look carefully for related information even if it uses slightly different wording.
+2. If the question asks about "preventive visits" or "preventative care", look for terms like: preventive care, preventative care, preventive services, wellness visits, annual checkups, routine care, screening services, etc.
+3. If the question asks about "primary care", look for: primary care, general practitioner, family doctor, PCP, primary care physician, etc.
+4. Extract and synthesize information from the excerpts. If you find related information, provide it even if it's not an exact match to the question wording.
+5. Only say "I can't find that information" if you've thoroughly searched all provided excerpts and truly cannot find any related information.
+6. Always cite your sources by referencing the page number and including a brief snippet.
+7. Never provide medical diagnosis or treatment recommendations. This is insurance navigation only.
 
 Format citations as: [Page X: "relevant snippet"]`;
 
